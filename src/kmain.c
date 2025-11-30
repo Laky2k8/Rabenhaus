@@ -5,6 +5,7 @@
 
 #include "rhMemory.h"
 #include "rhText.h"
+#include "rhKeyboard.h"
 
 void heap_init(void);
 
@@ -16,11 +17,11 @@ extern char _binary_src_fonts_comic_sfn_start;
 
 // Console
 char *buffer;
-int console_x = 50;
-int console_y = 100;
+int console_x = 0; // Current cursor position (Column Index)
+int console_y = 0; // Current cursor position (Row Index)
 
-int default_x = 50;
-int default_y = 100;
+int default_x = 50; // Screen Pixel X where console starts
+int default_y = 100; // Screen Pixel Y where console starts
 
 int width;
 int lines;
@@ -90,15 +91,6 @@ void kmain(void)
 		fb_ptr[i * (framebuffer->pitch / 4) + i] = 0xFFFF0000;  // Red diagonal
 	}*/
 
-	// Loop for whole screen
-	for(size_t y = 0; y < framebuffer->height; y++)
-	{
-		for(size_t x = 0; x < framebuffer->width; x++)
-		{
-			fb_ptr[y * (framebuffer->pitch / 4) + x] = (1.0 - y) * 0xFFFFFF + y * 0x7FB2FF;  // Vertical gradient from white to blue
-		}
-	}
-	
 	int err = textRenderer(framebuffer, (char *)&_binary_src_fonts_vgafont_sfn_start);
 
 	if(err != SSFN_OK)
@@ -106,20 +98,51 @@ void kmain(void)
 		hcf();
 	}
 
+	uint32_t start_color = 0xFFFFFF; // White
+	uint32_t end_color = 0x7FB2FF;   // Blue
+
+	// Extract channels
+	uint32_t r1 = (start_color >> 16) & 0xFF;
+	uint32_t g1 = (start_color >> 8) & 0xFF;
+	uint32_t b1 = start_color & 0xFF;
+
+	uint32_t r2 = (end_color >> 16) & 0xFF;
+	uint32_t g2 = (end_color >> 8) & 0xFF;
+	uint32_t b2 = end_color & 0xFF;
+
+	// Loop for whole screen
+	for(size_t y = 0; y < framebuffer->height; y++)
+	{
+		for(size_t x = 0; x < framebuffer->width; x++)
+		{
+			// Formula: result = (start * (max - current) + end * current) / max
+			uint32_t r = (r1 * (framebuffer->height - y) + r2 * y) / framebuffer->height;
+			uint32_t g = (g1 * (framebuffer->height - y) + g2 * y) / framebuffer->height;
+			uint32_t b = (b1 * (framebuffer->height - y) + b2 * y) / framebuffer->height;
+
+			// Recombine
+			uint32_t color = (r << 16) | (g << 8) | b;
+
+			fb_ptr[y * (framebuffer->pitch / 4) + x] = color;
+		}
+	}
+	
+
+
 	// Init console
-	width = framebuffer->width;
-	lines = framebuffer->height / 16;
+	width = framebuffer->width / 8;
+	lines = (framebuffer->height - default_y) / 16;
 
 	buffer = (char *)malloc(width * lines);
 	memset(buffer, ' ', width * lines);
 
-	textRenderer_setPos(50, 100);
-	textRenderer_setColor(0x000000, 0xFFFFFF); // Black on white
+	textRenderer_setPos(50, 50);
+	textRenderer_setColor(0, 0xFF000000); // Black on white
 
-	textRenderer_write("Rabenhaus v0.0.1\n");
+	/*textRenderer_write("Rabenhaus v0.0.1\n");
 	textRenderer_write("By Laky2k8, 2025\n");
 	textRenderer_write("----------------\n\n");
-	textRenderer_write("Árvíztűrő tükörfúrógép");
+	textRenderer_write("Árvíztűrő tükörfúrógép");*/
 
 	print("Rabenhaus v0.0.1\n");
 	print("By Laky2k8, 2025\n");
@@ -130,8 +153,17 @@ void kmain(void)
 
 	while(true)
 	{
-		// Just loop infinitely
-		continue;
+        char c = keyboard_read();
+        
+        if (c != 0) 
+		{
+            char temp[2] = { c, '\0' };
+            print(temp);
+
+        }
+        
+		asm volatile("pause");
+
 	}
 
 	//hcf();
@@ -140,52 +172,72 @@ void kmain(void)
 // CONSOLE
 void print(const char *str)
 {
-	while (*str)
-	{
-		if (*str == '\n')
-		{
-			console_x = default_x;
-			console_y++;
-			if (console_y >= lines)
-			{
-				scroll();
-				console_y = lines - 1;
-			}
-		}
-		else
-		{
-			buffer[console_y * width + console_x] = *str;
-			console_x++;
-			if (console_x >= width)
-			{
-				console_x = 0;
-				console_y++;
-				if (console_y >= lines)
-				{
-					scroll();
-					console_y = lines - 1;
-				}
-			}
-		}
-		str++;
-	}
-	render();
+    while (*str)
+    {
+        if (*str == '\n')
+        {
+            console_x = 0; // Reset to start of line (index 0)
+            console_y++;
+            if (console_y >= lines)
+            {
+                scroll();
+                console_y = lines - 1;
+            }
+        }
+        else
+        {
+            // Write to buffer using grid coordinates
+            buffer[console_y * width + console_x] = *str;
+            
+            console_x++;
+            if (console_x >= width)
+            {
+                console_x = 0;
+                console_y++;
+                if (console_y >= lines)
+                {
+                    scroll();
+                    console_y = lines - 1;
+                }
+            }
+        }
+        str++;
+    }
+    render();
 }
 
 void scroll()
 {
-	// Move all lines up by one
-	memmove(buffer, buffer + width, (lines - 1) * width);
-	// Clear the last line
-	memset(buffer + (lines - 1) * width, ' ', width);
+    memmove(buffer, buffer + width, (lines - 1) * width);
+    memset(buffer + (lines - 1) * width, ' ', width);
+}
+
+void draw_char_at(char c, int x, int y)
+{
+    // calculate pixel position
+    int pixel_x = default_x + (x * 8);
+    int pixel_y = default_y + (y * 16);
+
+    textRenderer_setPos(pixel_x, pixel_y);
+
+    // make a string for the renderer
+    char temp[2] = { c, '\0' };
+    
+    textRenderer_write(temp);
 }
 
 void render()
 {
-	textRenderer_setPos(console_x, console_y);
-	for (int i = 0; i < lines; i++)
-	{
-		textRenderer_write(buffer + i * width);
-		textRenderer_setPos(console_x, console_y + (i + 1) * 16);
-	}
+    char line_buf[width + 1];
+    line_buf[width] = '\0'; // null termination
+
+    for (int i = 0; i < lines; i++)
+    {
+        textRenderer_setPos(default_x, default_y + i * 16);
+
+        //safe copy of the line from the big buffer to the temp string
+        memcpy(line_buf, buffer + i * width, width);
+
+        textRenderer_write(line_buf);
+    }
 }
