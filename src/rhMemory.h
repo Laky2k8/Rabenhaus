@@ -5,7 +5,7 @@
 #include <stddef.h>
 #include <stdbool.h>
 
-#define TA_BLOCK_COUNT 256    // Increase block count
+#define TA_BLOCK_COUNT 4096
 #define TA_HEAP_SIZE (8 << 20) // 8MB heap
 
 bool ta_init(const void *base, const void *limit, const size_t heap_blocks, const size_t split_thresh, const size_t alignment);
@@ -74,7 +74,7 @@ int memcmp(const void *s1, const void *s2, size_t n)
 }
 
 // Magic number to verify our allocations
-#define ALLOC_MAGIC 0xDEADBEEF
+#define ALLOC_MAGIC 0xCAFEBABE
 
 typedef struct {
     uint32_t magic;

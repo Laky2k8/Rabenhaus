@@ -13,9 +13,9 @@
 
 static ssfn_t ctx;
 static ssfn_buf_t buf;
-static int console_margin_x = 0;
+static int textRenderermargin_x = 0;
 
-int console_init(struct limine_framebuffer *fb, char *font)
+int textRenderer(struct limine_framebuffer *fb, char *font)
 {
     int err;
     
@@ -26,7 +26,7 @@ int console_init(struct limine_framebuffer *fb, char *font)
         return err;
     }
 
-    err = ssfn_select(&ctx, SSFN_FAMILY_ANY, NULL, SSFN_STYLE_REGULAR | SSFN_STYLE_NOCACHE, 32);
+    err = ssfn_select(&ctx, SSFN_FAMILY_ANY, NULL, SSFN_STYLE_REGULAR, 16);
     if (err != SSFN_OK) {
         return err;
     }
@@ -37,33 +37,33 @@ int console_init(struct limine_framebuffer *fb, char *font)
     buf.p = (uint16_t)fb->pitch;
     buf.x = 0;
     buf.y = 0;
-    buf. fg = 0xFFFFFFFF;
+    buf.fg = 0xFFFFFFFF;
     buf.bg = 0x00000000;
 
     return SSFN_OK;
 }
 
-void console_setPos(int x, int y)
+void textRenderer_setPos(int x, int y)
 {
-    console_margin_x = x;
+    textRenderermargin_x = x;
     buf.x = x;
     buf.y = y;
 }
 
-void console_setColor(uint32_t bg, uint32_t fg)
+void textRenderer_setColor(uint32_t bg, uint32_t fg)
 {
     buf.bg = bg;
     buf.fg = fg;
 }
 
-void console_write(const char* text)
+void textRenderer_write(const char* text)
 {
     int ret;
     while(*text)
     {
         if(*text == '\n')
         {
-            buf.x = console_margin_x;
+            buf.x = textRenderermargin_x;
             buf.y += ctx.line ?  ctx.line : ctx.size;
             text++;
             continue;
@@ -82,7 +82,7 @@ void console_write(const char* text)
     }
 }
 
-void console_end()
+void textRendererend()
 {
     ssfn_free(&ctx);
 }
