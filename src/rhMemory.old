@@ -1,0 +1,164 @@
+#ifndef RH_MEMORY_H
+#define RH_MEMORY_H
+
+#include <stdint.h>
+#include <stddef.h>
+#include <stdbool.h>
+
+/* Allocator configuration (adjust if needed) */
+#define TA_BLOCK_COUNT 128          /* Max number of memory blocks */
+#define TA_HEAP_SIZE    (2 << 20)   /* 2MB heap */
+
+/* The alignment we want to give callers. Must match the alignment passed to ta_init(). */
+#ifndef TA_MALLOC_ALIGNMENT
+#define TA_MALLOC_ALIGNMENT 16
+#endif
+
+/* tinyalloc API (forward decls; tinyalloc.h already provides these too). */
+bool ta_init(const void *base, const void *limit, const size_t heap_blocks, const size_t split_thresh, const size_t alignment);
+void *ta_alloc(size_t num);
+void *ta_calloc(size_t num, size_t size);
+bool ta_free(void *ptr);
+
+/* Diagnostics helpers in tinyalloc (optional) */
+size_t ta_num_free(void);
+size_t ta_num_used(void);
+size_t ta_num_fresh(void);
+bool ta_check(void);
+
+/* --- Small internal utilities --- */
+
+static inline size_t __align_up(size_t v, size_t a) {
+    return (v + (a - 1)) & ~(a - 1);
+}
+
+static inline void __memcpy(void *dst, const void *src, size_t n) {
+    unsigned char *d = (unsigned char *)dst;
+    const unsigned char *s = (const unsigned char *)src;
+    while (n--) *d++ = *s++;
+}
+
+static inline void __memset_zero(void *dst, size_t n) {
+    unsigned char *d = (unsigned char *)dst;
+    while (n--) *d++ = 0;
+}
+
+typedef struct {
+    void   *raw;   /* pointer exactly as returned by ta_alloc() */
+    size_t  size;  /* user-requested size (for realloc/copy decisions & debugging) */
+    uint32_t magic;/* simple magic to help detect accidental corruption (optional) */
+} alloc_header_t;
+
+#define ALLOC_HDR_MAGIC 0xA11OC0DEu
+
+/* Helper to compute header size (no extra alignment applied to header itself). */
+static inline size_t __alloc_header_size(void) {
+    return sizeof(alloc_header_t);
+}
+
+/* --- Public malloc/realloc/free/calloc wrappers --- */
+
+/* malloc: allocate `size` bytes and return an aligned pointer */
+static inline void *malloc(size_t size) {
+    if (size == 0) {
+        /* POSIX permits either NULL or a unique pointer for size 0 - return NULL for simplicity. */
+        return NULL;
+    }
+
+    const size_t alignment = (size_t)TA_MALLOC_ALIGNMENT;
+    const size_t hdr_sz = __alloc_header_size();
+
+    /* total request must include header plus up to (alignment-1) padding */
+    /* Check overflow: total = size + hdr_sz + (alignment - 1) */
+    if (size > (SIZE_MAX - hdr_sz - (alignment - 1))) {
+        return NULL; /* overflow */
+    }
+    size_t total = size + hdr_sz + (alignment - 1);
+
+    void *raw = ta_alloc(total);
+    if (!raw) return NULL;
+
+    uintptr_t raw_addr = (uintptr_t)raw;
+    /* user pointer must be aligned while header sits immediately before user pointer */
+    uintptr_t user_addr = __align_up(raw_addr + hdr_sz, alignment);
+    alloc_header_t *hdr = (alloc_header_t *)(user_addr - hdr_sz);
+
+    hdr->raw = raw;
+    hdr->size = size;
+    hdr->magic = ALLOC_HDR_MAGIC;
+
+    return (void *)user_addr;
+}
+
+/* free: free memory allocated by malloc/realloc/calloc above */
+static inline void free(void *ptr) {
+    if (!ptr) return;
+
+    const size_t hdr_sz = __alloc_header_size();
+    alloc_header_t *hdr = (alloc_header_t *)((unsigned char *)ptr - hdr_sz);
+
+    /* sanity check magic (best-effort) */
+    if (hdr->magic != ALLOC_HDR_MAGIC) {
+        /* Try best-effort: still call ta_free with hdr->raw if it looks sane */
+        /* If hdr->raw is obviously invalid (NULL) skip free. */
+        if (!hdr->raw) return;
+    }
+
+    /* Call ta_free with the original pointer returned by ta_alloc */
+    (void)ta_free(hdr->raw);
+}
+
+static inline void *realloc(void *ptr, size_t new_size) {
+    if (ptr == NULL) {
+        return malloc(new_size);
+    }
+    if (new_size == 0) {
+        free(ptr);
+        return NULL;
+    }
+
+    const size_t hdr_sz = __alloc_header_size();
+    alloc_header_t *hdr = (alloc_header_t *)((unsigned char *)ptr - hdr_sz);
+
+    size_t old_size = hdr->size;
+    if (new_size <= old_size) {
+        hdr->size = new_size;
+        return ptr;
+    }
+
+    /* Otherwise allocate a new block, copy, free old */
+    void *new_ptr = malloc(new_size);
+    if (!new_ptr) return NULL;
+
+    /* copy min(old_size, new_size) bytes */
+    size_t to_copy = old_size < new_size ? old_size : new_size;
+    __memcpy(new_ptr, ptr, to_copy);
+
+    free(ptr);
+    return new_ptr;
+}
+
+/* calloc: allocate count * size bytes and zero them */
+static inline void *calloc(size_t count, size_t elsize) {
+    if (count == 0 || elsize == 0) return NULL;
+
+    /* check overflow for count * elsize */
+    if (count > SIZE_MAX / elsize) return NULL;
+    size_t total = count * elsize;
+
+    void *p = malloc(total);
+    if (!p) return NULL;
+
+    __memset_zero(p, total);
+    return p;
+}
+
+static inline void hcf(void)
+{
+    for(;;)
+    {
+        asm("hlt");
+    }
+}
+
+#endif
