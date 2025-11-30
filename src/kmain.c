@@ -170,60 +170,65 @@ void kmain(void)
 }
 
 // CONSOLE
+
+void draw_char_at(const char *c, int x, int y)
+{
+    int pixel_x = default_x + (x * 8);
+    int pixel_y = default_y + (y * 16);
+
+    textRenderer_setPos(pixel_x, pixel_y);
+    textRenderer_write(c);
+}
+
+
 void print(const char *str)
 {
-    while (*str)
+    char *ptr = (char *)str;
+
+    while (*ptr)
     {
-        if (*str == '\n')
+        if (*ptr == '\n')
         {
-            console_x = 0; // Reset to start of line (index 0)
+            console_x = 0;
             console_y++;
-            if (console_y >= lines)
-            {
-                scroll();
-                console_y = lines - 1;
-            }
+
+            // Scroll check logic
+            if (console_y >= lines) { scroll(); console_y = lines - 1; render(); }
+            
+            ptr++; // Move past \n
         }
         else
         {
-            // Write to buffer using grid coordinates
-            buffer[console_y * width + console_x] = *str;
+            char *start = ptr;
+            ssfn_utf8(&ptr);
+            int len = ptr - start;
+
+            // create a temporary string for just this one character
+            char temp[5] = {0}; // Max UTF-8 length is 4 + null terminator
+            for(int i = 0; i < len; i++) {
+                temp[i] = start[i];
+            }
+
+            buffer[console_y * width + console_x] = start[0];
+
+            draw_char_at(temp, console_x, console_y);
             
             console_x++;
             if (console_x >= width)
             {
                 console_x = 0;
                 console_y++;
-                if (console_y >= lines)
-                {
-                    scroll();
-                    console_y = lines - 1;
-                }
+                if (console_y >= lines) { scroll(); console_y = lines - 1; render(); }
             }
+            
         }
-        str++;
     }
-    render();
 }
 
 void scroll()
 {
     memmove(buffer, buffer + width, (lines - 1) * width);
     memset(buffer + (lines - 1) * width, ' ', width);
-}
-
-void draw_char_at(char c, int x, int y)
-{
-    // calculate pixel position
-    int pixel_x = default_x + (x * 8);
-    int pixel_y = default_y + (y * 16);
-
-    textRenderer_setPos(pixel_x, pixel_y);
-
-    // make a string for the renderer
-    char temp[2] = { c, '\0' };
-    
-    textRenderer_write(temp);
 }
 
 void render()
