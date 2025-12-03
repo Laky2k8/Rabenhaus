@@ -6,7 +6,7 @@
 #include <stdbool.h>
 
 #define TA_BLOCK_COUNT 4096
-#define TA_HEAP_SIZE (8 << 20) // 8MB heap
+#define TA_HEAP_SIZE (64 << 20) // 64MB heap
 
 bool ta_init(const void *base, const void *limit, const size_t heap_blocks, const size_t split_thresh, const size_t alignment);
 void *ta_alloc(size_t num);
@@ -26,7 +26,7 @@ void heap_init(void)
     heap_initialized = true;
 }
 
-void *memcpy(void *restrict dest, const void *restrict src, size_t n)
+void *memcpy_old(void *restrict dest, const void *restrict src, size_t n)
 {
     uint8_t *restrict pdest = (uint8_t *restrict)dest;
     const uint8_t *restrict psrc = (const uint8_t *restrict)src;
@@ -35,6 +35,29 @@ void *memcpy(void *restrict dest, const void *restrict src, size_t n)
     }
     return dest;
 }
+
+void *memcpy(void *restrict dest, const void *restrict src, size_t n)
+{
+    uint8_t *restrict pdest = (uint8_t *restrict)dest;
+    const uint8_t *restrict psrc = (const uint8_t *restrict)src;
+
+    // Copy 8 bytes at a time if possible
+    while (n >= 8) {
+        *(uint64_t *)pdest = *(const uint64_t *)psrc;
+        pdest += 8;
+        psrc += 8;
+        n -= 8;
+    }
+
+    // Copy remaining bytes
+    while (n > 0) {
+        *pdest++ = *psrc++;
+        n--;
+    }
+
+    return dest;
+}
+
 
 void *memset(void *s, int c, size_t n)
 {

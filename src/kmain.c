@@ -7,10 +7,43 @@
 #include "rhText.h"
 #include "rhKeyboard.h"
 #include "rhDraw.h"
+#include "rhRand.h"
 
 void heap_init(void);
-void render_player(struct limine_framebuffer *framebuffer);
-void render_trees(struct limine_framebuffer *framebuffer, struct Tree *trees[]);
+
+void reboot()
+{
+    uint8_t good = 0x02;
+    while (good & 0x02)
+        good = inb(0x64);
+    outb(0x64, 0xFE);
+    hcf();
+}
+
+char* itoa(int value, char* result, int base) {
+	// check that the base if valid
+	if (base < 2 || base > 36) { *result = '\0'; return result; }
+
+	char* ptr = result, *ptr1 = result, tmp_char;
+	int tmp_value;
+
+	do {
+		tmp_value = value;
+		value /= base;
+		*ptr++ = "zyxwvutsrqponmlkjihgfedcba9876543210123456789abcdefghijklmnopqrstuvwxyz" [35 + (tmp_value - value * base)];
+	} while ( value );
+
+	// Apply negative sign
+	if (tmp_value < 0) *ptr++ = '-';
+	*ptr-- = '\0';
+	while(ptr1 < ptr) {
+		tmp_char = *ptr;
+		*ptr--= *ptr1;
+		*ptr1++ = tmp_char;
+	}
+	return result;
+}
+	
 
 // Fonts
 extern char _binary_src_fonts_vgafont_sfn_start;
@@ -32,6 +65,8 @@ int default_y = 100; // Screen Pixel Y where console starts
 int width;
 int lines;
 
+int score = 0;
+
 void print(const char *str);
 void scroll();
 void render();
@@ -45,18 +80,21 @@ struct Tree
 	int y;
 };
 
+void render_player(struct limine_framebuffer *framebuffer);
+void render_trees(struct limine_framebuffer *framebuffer, struct Tree *trees);
+
 // Set up "new tree" at random lane
 void new_tree(struct Tree *tree, struct limine_framebuffer *framebuffer)
 {
-	tree->y = framebuffer->height - 100;
+	tree->y = (framebuffer->height - 100) + (rand() % 200);
 
 	// Random integer X between -1 and 1
-	int lane = round((rand() % 3) - 1);
+	int lane = (rand() % 3) - 1;
 
 	tree->x = (framebuffer->width / 2) + lane * 200;
 }
 
-struct Tree trees[1];
+struct Tree trees[2];
 
 // LIMINE
 
@@ -113,6 +151,14 @@ void kmain(void)
 
 
 	volatile uint32_t *fb_ptr = framebuffer->address;
+
+	/* Backbuffer (double buffering) */
+	size_t backbuffer_size = framebuffer->pitch * framebuffer->height;
+	void *backbuffer = malloc(backbuffer_size);
+	if(!backbuffer) hcf();
+
+	struct limine_framebuffer backbuffer_info = *framebuffer;
+	backbuffer_info.address = backbuffer;
 	
 	/*for(size_t i = 0; i < 100; i++)
 	{
@@ -127,10 +173,10 @@ void kmain(void)
 	}
 
 
-	render_player(framebuffer);
+	render_player(&backbuffer_info);
 
 	// Set up trees
-	for(int i = 0; i < 1; i++)
+	for(int i = 0; i < 2; i++)
 	{
 		new_tree(&trees[i], framebuffer);
 	}
@@ -145,6 +191,9 @@ void kmain(void)
 
 	textRenderer_setPos(50, 50);
 	textRenderer_setColor(0, 0xFF000000); // Black on white*/
+
+	textRenderer_setPos(50, 50);
+	textRenderer_setColor(0, 0xFF000000);
 
 	textRenderer_write("Rabenhaus v0.0.1\n");
 	textRenderer_write("By Laky2k8, 2025\n");
@@ -189,24 +238,91 @@ void kmain(void)
 			}
 		}
 
+		for(int i = 0; i < 2; i++)
+		{
+			trees[i].y -= (5 + score / 4); // Increase speed with score
 
-		render_player(framebuffer);
 
-		render_trees(framebuffer, trees);
+			if(trees[i].y <= 100 && trees[i].x == ((framebuffer->width / 2) + player_lane * 200))
+			{
+				alive = false;
+			}
+
+			if(trees[i].y < -100)
+			{
+				new_tree(&trees[i], framebuffer);
+
+				score += 1;
+			}
+		}
+
+
+		render_player(&backbuffer_info);
+
+		render_trees(&backbuffer_info, trees);
+
+		memcpy(framebuffer->address, backbuffer, backbuffer_size);
+
+		// Print score
+		textRenderer_setPos(50, 50);
+		textRenderer_setColor(0, 0xFF000000);
+		char score_str[20];
+		itoa(score, score_str, 10);
+		textRenderer_write("Score: ");
+		textRenderer_write(score_str);
         
 		asm volatile("pause");
 
 	}
 
+	for(size_t y = 0; y < framebuffer->height; y++)
+	{
+
+		for(size_t x = 0; x < framebuffer->width; x++)
+		{
+			fb_ptr[y * (framebuffer->pitch / 4) + x] = 0x0000FF;
+		}
+	}
+
+	textRenderer_setColor(0, 0xFFFFFFFF);
+
+	textRenderer_write("A problem (You hitting a tree) has been detected and Rabenhaus has been shut down because yeeeowch that must've hurt. To continue:\n");
+	textRenderer_write("Press any key and the computer will reboot so you can try again.\n\n");
+
+	char score_str[20];
+	itoa(score, score_str, 10);
+	textRenderer_write("Your score was: ");
+	textRenderer_write(score_str);
+	textRenderer_write("\n\n");
+
+	textRenderer_write("Thanks for playing Rabenhaus! - Laky2k8");
+
+	bool anyKeyPressed = false;
+
+	while(!anyKeyPressed)
+	{
+		char c = keyboard_read();
+
+		if (c != 0) 
+		{
+			anyKeyPressed = true;
+			break;
+        }
+	}
+
+	reboot();
+	
+
 	//hcf();
 }
 
 
-void render_trees(struct limine_framebuffer *framebuffer, struct Tree *trees[])
+void render_trees(struct limine_framebuffer *framebuffer, struct Tree *trees)
 {
-	for(int i = 0; i < 1; i++)
+	for(int i = 0; i < 2; i++)
 	{
-		draw_sprite(framebuffer, trees[i]->x, trees[i]->y, (void*)_binary_src_sprites_tree_tga_start, 3);
+        // FIXED: accessing struct members via . instead of ->
+		draw_sprite(framebuffer, trees[i].x, trees[i].y, (void*)_binary_src_sprites_tree_tga_start, 4);
 	}
 }
 
@@ -231,16 +347,15 @@ void render_player(struct limine_framebuffer *framebuffer)
 	// Loop for whole screen
 	for(size_t y = 0; y < framebuffer->height; y++)
 	{
+        uint32_t r = (r1 * (framebuffer->height - y) + r2 * y) / framebuffer->height;
+        uint32_t g = (g1 * (framebuffer->height - y) + g2 * y) / framebuffer->height;
+        uint32_t b = (b1 * (framebuffer->height - y) + b2 * y) / framebuffer->height;
+
+        // Recombine
+        uint32_t color = (r << 16) | (g << 8) | b;
+
 		for(size_t x = 0; x < framebuffer->width; x++)
 		{
-			// Formula: result = (start * (max - current) + end * current) / max
-			uint32_t r = (r1 * (framebuffer->height - y) + r2 * y) / framebuffer->height;
-			uint32_t g = (g1 * (framebuffer->height - y) + g2 * y) / framebuffer->height;
-			uint32_t b = (b1 * (framebuffer->height - y) + b2 * y) / framebuffer->height;
-
-			// Recombine
-			uint32_t color = (r << 16) | (g << 8) | b;
-
 			fb_ptr[y * (framebuffer->pitch / 4) + x] = color;
 		}
 	}

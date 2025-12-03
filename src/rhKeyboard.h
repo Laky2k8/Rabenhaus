@@ -11,6 +11,11 @@ static inline uint8_t inb(uint16_t port)
 	return ret;
 }
 
+static inline void outb(uint16_t port, uint8_t val)
+{
+    __asm__ volatile ( "outb %b0, %w1" : : "a"(val), "Nd"(port) : "memory");
+}
+
 // PS/2 ports
 #define PS2_DATA 0x60
 #define PS2_STATUS 0x64
