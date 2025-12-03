@@ -6,14 +6,20 @@
 #include "rhMemory.h"
 #include "rhText.h"
 #include "rhKeyboard.h"
+#include "rhDraw.h"
 
 void heap_init(void);
+void render_player(struct limine_framebuffer *framebuffer);
+void render_trees(struct limine_framebuffer *framebuffer, struct Tree *trees[]);
 
 // Fonts
 extern char _binary_src_fonts_vgafont_sfn_start;
 extern char _binary_src_fonts_vera_sfn_start;
 extern char _binary_src_fonts_freesans_sfn_start;
 extern char _binary_src_fonts_comic_sfn_start;
+
+extern char _binary_src_sprites_player_tga_start[];
+extern char _binary_src_sprites_tree_tga_start[];
 
 // Console
 char *buffer;
@@ -29,6 +35,28 @@ int lines;
 void print(const char *str);
 void scroll();
 void render();
+
+int player_lane = 0; // -1 - left, 0 - center, 1 - right
+bool alive = true;
+
+struct Tree
+{
+	int x;
+	int y;
+};
+
+// Set up "new tree" at random lane
+void new_tree(struct Tree *tree, struct limine_framebuffer *framebuffer)
+{
+	tree->y = framebuffer->height - 100;
+
+	// Random integer X between -1 and 1
+	int lane = round((rand() % 3) - 1);
+
+	tree->x = (framebuffer->width / 2) + lane * 200;
+}
+
+struct Tree trees[1];
 
 // LIMINE
 
@@ -98,6 +126,96 @@ void kmain(void)
 		hcf();
 	}
 
+
+	render_player(framebuffer);
+
+	// Set up trees
+	for(int i = 0; i < 1; i++)
+	{
+		new_tree(&trees[i], framebuffer);
+	}
+
+
+	// Init console
+	/*width = framebuffer->width / 8;
+	lines = (framebuffer->height - default_y) / 16;
+
+	buffer = (char *)malloc(width * lines);
+	memset(buffer, ' ', width * lines);
+
+	textRenderer_setPos(50, 50);
+	textRenderer_setColor(0, 0xFF000000); // Black on white*/
+
+	textRenderer_write("Rabenhaus v0.0.1\n");
+	textRenderer_write("By Laky2k8, 2025\n");
+	textRenderer_write("----------------\n\n");
+	textRenderer_write("Árvíztűrő tükörfúrógép");
+
+	/*print("Rabenhaus v0.0.1\n");
+	print("By Laky2k8, 2025\n");
+	print("----------------\n\n");
+	print("Árvíztűrő tükörfúrógép\n");
+
+	render();*/
+
+	
+
+	while(alive)
+	{
+        char c = keyboard_read();
+        
+        /*if (c != 0) 
+		{
+            char temp[2] = { c, '\0' };
+            print(temp);
+
+        }*/
+
+		if(c == 'a')
+		{
+			if(player_lane > -2)
+			{
+				player_lane -= 1;
+
+			}
+		}
+
+		if(c == 'd')
+		{
+			if(player_lane < 2)
+			{
+				player_lane += 1;
+
+			}
+		}
+
+
+		render_player(framebuffer);
+
+		render_trees(framebuffer, trees);
+        
+		asm volatile("pause");
+
+	}
+
+	//hcf();
+}
+
+
+void render_trees(struct limine_framebuffer *framebuffer, struct Tree *trees[])
+{
+	for(int i = 0; i < 1; i++)
+	{
+		draw_sprite(framebuffer, trees[i]->x, trees[i]->y, (void*)_binary_src_sprites_tree_tga_start, 3);
+	}
+}
+
+void render_player(struct limine_framebuffer *framebuffer)
+{
+
+	volatile uint32_t *fb_ptr = framebuffer->address;
+
+	// Background
 	uint32_t start_color = 0xFFFFFF; // White
 	uint32_t end_color = 0x7FB2FF;   // Blue
 
@@ -126,47 +244,8 @@ void kmain(void)
 			fb_ptr[y * (framebuffer->pitch / 4) + x] = color;
 		}
 	}
-	
 
-
-	// Init console
-	width = framebuffer->width / 8;
-	lines = (framebuffer->height - default_y) / 16;
-
-	buffer = (char *)malloc(width * lines);
-	memset(buffer, ' ', width * lines);
-
-	textRenderer_setPos(50, 50);
-	textRenderer_setColor(0, 0xFF000000); // Black on white
-
-	/*textRenderer_write("Rabenhaus v0.0.1\n");
-	textRenderer_write("By Laky2k8, 2025\n");
-	textRenderer_write("----------------\n\n");
-	textRenderer_write("Árvíztűrő tükörfúrógép");*/
-
-	print("Rabenhaus v0.0.1\n");
-	print("By Laky2k8, 2025\n");
-	print("----------------\n\n");
-	print("Árvíztűrő tükörfúrógép\n");
-
-	render();
-
-	while(true)
-	{
-        char c = keyboard_read();
-        
-        if (c != 0) 
-		{
-            char temp[2] = { c, '\0' };
-            print(temp);
-
-        }
-        
-		asm volatile("pause");
-
-	}
-
-	//hcf();
+	draw_sprite(framebuffer, (framebuffer->width / 2) + player_lane * 200, 100, (void*)_binary_src_sprites_player_tga_start, 3);
 }
 
 // CONSOLE

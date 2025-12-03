@@ -106,11 +106,22 @@ override HEADER_DEPS := $(addprefix obj/,$(CFILES:.c=.c.d) $(ASFILES:.S=.S.d))
 override FONTFILES := $(shell find -L src -type f -name "*.sfn" 2>/dev/null)
 override FONT_OBJS := $(addprefix obj/,$(FONTFILES:.sfn=.sfn.o))
 
+override TGAFILES := $(shell find -L src -type f -name "*.tga" 2>/dev/null)
+override TGA_OBJS := $(addprefix obj/,$(TGAFILES:.tga=.tga.o))
+
 # Add font objects to the build
 override OBJ += $(FONT_OBJS)
 
+# Add TGA objects to the build
+override OBJ += $(TGA_OBJS)
+
 # Rule to convert binary font files to object files
 obj/%.sfn.o: %.sfn GNUmakefile
+	mkdir -p "$(dir $@)"
+	objcopy -I binary -O elf64-x86-64 -B i386 $< $@
+
+# Rule to convert .TGA images to object files
+obj/%.tga.o: %.tga GNUmakefile
 	mkdir -p "$(dir $@)"
 	objcopy -I binary -O elf64-x86-64 -B i386 $< $@
 
