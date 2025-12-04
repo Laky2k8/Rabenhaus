@@ -1,5 +1,7 @@
 # Rabenhaus
 
+Check out some gameplay here: https://youtu.be/aLy6DQPm9QE
+
 Now that the winter season is upon us, the holidays are coming up and I have more free time in general, I have decided to give another try to a field of IT I tried to enter many times before to not much avail: **Operating Systems**. This project started off pretty rocky as well, but after switching to Limine it was a much better experience than anything I have tried before :D 
 
 What I ended up with is not really an OS in the traditional sense, more so a bootable game: You take the role of a sledder sledding down a hill, and you have to avoid hitting trees. But be warned, for the more trees you pass the faster the game will get! <br>
@@ -27,9 +29,6 @@ I would like to one day try my hand at making an *actual* operating system in th
 1. Either build the OS or download the newest release
 2. Burn the .iso to a USB or insert it into a VM
 3. Enjoy! This requires no installation (I have no idea how you could even do that 😭)
-
-Or if you don't want to do all that you can just check out some gameplay here: https://youtu.be/aLy6DQPm9QE
-
 
 
 ## System requirements
